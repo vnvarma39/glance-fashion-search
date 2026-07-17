@@ -41,10 +41,10 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # Model for text-only attribute extraction (free tier)
-LLM_MODEL = "meta-llama/llama-4-maverick:free"
+LLM_MODEL = "google/gemini-2.0-flash-exp:free"
 
 # Model for VLM-as-Judge with vision (free tier, supports images)
-VLM_MODEL = "meta-llama/llama-4-scout:free"
+VLM_MODEL = "google/gemini-2.0-flash-exp:free"
 
 # API rate limiting
 API_REQUESTS_PER_MINUTE = 15
