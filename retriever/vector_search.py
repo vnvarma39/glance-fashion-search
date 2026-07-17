@@ -29,6 +29,7 @@ from config import (
     VISUAL_COLLECTION_NAME,
     TEXT_COLLECTION_NAME,
     VECTOR_STORE_DIR,
+    DATASET_DIR,
 )
 
 from indexer.vector_store import VectorStore
@@ -267,7 +268,7 @@ class VectorSearcher:
                 meta = metadatas[idx] if metadatas else {}
                 candidate_map[doc_id] = {
                     "id": doc_id,
-                    "image_path": meta.get("image_path", ""),
+                    "image_path": str(DATASET_DIR / "images" / Path(meta.get("image_path", "")).name),
                     "caption": meta.get("caption", ""),
                     "garments": meta.get("garments", "[]"),
                     "colors": meta.get("colors", "[]"),
@@ -291,7 +292,7 @@ class VectorSearcher:
                     meta = metadatas[idx] if metadatas else {}
                     candidate_map[doc_id] = {
                         "id": doc_id,
-                        "image_path": meta.get("image_path", ""),
+                        "image_path": str(DATASET_DIR / "images" / Path(meta.get("image_path", "")).name),
                         "caption": meta.get("caption", ""),
                         "garments": meta.get("garments", "[]"),
                         "colors": meta.get("colors", "[]"),
