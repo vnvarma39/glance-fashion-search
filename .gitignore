@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environment
+.env
+.venv/
+env/
+venv/
+
+# Vector Store (generated, large)
+vector_store/
+
+# Dataset images (too large for git)
+dataset/images/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Results (optional - include if you want to show them on GitHub)
+# results/
+
+# Jupyter
+.ipynb_checkpoints/

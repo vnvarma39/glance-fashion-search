@@ -1,0 +1,26 @@
+# Core ML
+torch
+torchvision
+transformers
+sentence-transformers
+open-clip-torch
+
+# Vector Database
+chromadb
+
+# LLM API (OpenAI-compatible client for OpenRouter)
+openai
+
+# Image Processing
+Pillow
+
+# Data & Utilities
+pandas
+tqdm
+python-dotenv
+matplotlib
+numpy
+
+# Dataset Download
+datasets
+requests
