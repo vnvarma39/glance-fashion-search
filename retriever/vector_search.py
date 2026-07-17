@@ -55,7 +55,7 @@ class VectorSearcher:
         self.device = device
 
         # Shared vector store (ChromaDB)
-        self.vector_store = VectorStore(persist_dir=str(VECTOR_STORE_DIR))
+        self.vector_store = VectorStore(persist_dir=VECTOR_STORE_DIR)
 
         # Embedding generator (SentenceTransformer text embeddings)
         self.embedding_generator = EmbeddingGenerator()
