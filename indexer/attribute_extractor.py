@@ -38,152 +38,108 @@ _DEFAULT_ATTRIBUTES: dict = {
     "style": "other",
 }
 
-
 class AttributeExtractor:
-    """Extracts structured fashion attributes from captions using an LLM.
-
-    Attributes:
-        client: OpenAI-compatible client pointed at OpenRouter.
+    """Extracts structured fashion attributes from captions using fast keyword matching.
+    
+    This completely bypasses API rate limits and runs instantly offline.
     """
 
     def __init__(self) -> None:
-        """Create the OpenAI client configured for OpenRouter."""
-        self.client = OpenAI(
-            api_key=OPENROUTER_API_KEY,
-            base_url=OPENROUTER_BASE_URL,
-        )
-        print("[AttributeExtractor] Initialised with OpenRouter API.")
+        """Initialize the keyword vocabularies."""
+        print("[AttributeExtractor] Initialised with Offline Keyword Matcher (No API limits!).")
+        
+        self.garment_vocab = [
+            "shirt", "t-shirt", "pants", "jeans", "dress", "skirt", "jacket", 
+            "coat", "sweater", "hoodie", "suit", "blazer", "shorts", "tie", 
+            "hat", "shoes", "sneakers", "boots", "glasses", "sunglasses", "bag"
+        ]
+        
+        self.color_vocab = [
+            "red", "blue", "green", "yellow", "black", "white", "gray", "grey", 
+            "brown", "orange", "pink", "purple", "beige", "navy", "maroon"
+        ]
+        
+        self.env_vocab = {
+            "indoor": ["indoor", "room", "inside", "office", "home", "building", "studio"],
+            "outdoor": ["outdoor", "outside", "nature", "park", "street", "city", "urban", "road"],
+            "urban": ["urban", "city", "street", "building"],
+            "nature": ["nature", "park", "tree", "grass", "forest"]
+        }
+        
+        self.style_vocab = {
+            "formal": ["formal", "suit", "tie", "blazer", "business", "office", "professional"],
+            "casual": ["casual", "t-shirt", "jeans", "hoodie", "sneakers", "relaxed"],
+            "winter": ["winter", "coat", "jacket", "snow", "cold", "sweater"],
+            "summer": ["summer", "shorts", "sunglasses", "beach", "warm"]
+        }
 
     # ------------------------------------------------------------------
     # Single caption → structured attributes
     # ------------------------------------------------------------------
 
     def extract_attributes(self, caption: str) -> dict:
-        """Send a caption to the LLM and parse the JSON response.
-
-        The method includes retry logic for rate-limit (HTTP 429) errors
-        and gracefully handles malformed JSON by returning a default dict.
-
-        Args:
-            caption: Natural-language image caption.
-
-        Returns:
-            Dictionary with keys ``garments``, ``colors``, ``environment``,
-            ``style``.
-        """
-        prompt = ATTRIBUTE_EXTRACTION_PROMPT.format(caption=caption)
-        max_retries = 3
-
-        for attempt in range(1, max_retries + 1):
-            try:
-                response = self.client.chat.completions.create(
-                    model=LLM_MODEL,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.1,
-                )
-                raw_text: str = response.choices[0].message.content.strip()
-
-                # Strip markdown fences if the model wraps its output
-                if raw_text.startswith("```"):
-                    raw_text = raw_text.split("\n", 1)[-1]
-                if raw_text.endswith("```"):
-                    raw_text = raw_text.rsplit("```", 1)[0]
-                raw_text = raw_text.strip()
-
-                attributes: dict = json.loads(raw_text)
-
-                # Ensure expected keys exist
-                for key, default in _DEFAULT_ATTRIBUTES.items():
-                    attributes.setdefault(key, default)
-
-                return attributes
-
-            except json.JSONDecodeError:
-                print(
-                    f"[AttributeExtractor] JSON parse error (attempt {attempt}/{max_retries})."
-                )
-                if attempt < max_retries:
-                    time.sleep(API_RETRY_DELAY)
-
-            except Exception as exc:
-                error_msg = str(exc).lower()
-                if "429" in error_msg or "rate" in error_msg:
-                    print(
-                        f"[AttributeExtractor] Rate limited – retrying in "
-                        f"{API_RETRY_DELAY}s (attempt {attempt}/{max_retries})."
-                    )
-                    time.sleep(API_RETRY_DELAY)
-                else:
-                    print(f"[AttributeExtractor] API error: {exc}")
-                    if attempt < max_retries:
-                        time.sleep(API_RETRY_DELAY)
-
-        print("[AttributeExtractor] Returning default attributes after retries exhausted.")
-        return dict(_DEFAULT_ATTRIBUTES)
+        """Extract attributes by matching keywords in the caption."""
+        words = caption.lower().replace(",", "").replace(".", "").split()
+        
+        # Extract garments
+        garments = list(set([word for word in words if word in self.garment_vocab]))
+        
+        # Extract colors
+        colors = list(set([word for word in words if word in self.color_vocab]))
+        
+        # Determine environment
+        environment = "unknown"
+        for env, keywords in self.env_vocab.items():
+            if any(k in words for k in keywords):
+                environment = env
+                break
+                
+        # Determine style
+        style = "other"
+        for s, keywords in self.style_vocab.items():
+            if any(k in words for k in keywords):
+                style = s
+                break
+                
+        return {
+            "garments": garments,
+            "colors": colors,
+            "environment": environment,
+            "style": style
+        }
 
     # ------------------------------------------------------------------
-    # Batch extraction with rate limiting + caching
+    # Batch extraction 
     # ------------------------------------------------------------------
 
     def extract_all(self, captions: dict[str, str]) -> dict[str, dict]:
-        """Extract attributes for every caption with rate limiting.
-
-        Already-processed filenames (present in the JSON cache) are
-        skipped automatically.
-
-        Args:
-            captions: Mapping ``{filename: caption}``.
-
-        Returns:
-            Mapping ``{filename: attributes_dict}`` for all filenames.
-        """
+        """Extract attributes for every caption instantly."""
         # Load existing cache ------------------------------------------------
         all_attributes: dict[str, dict] = {}
         if ATTRIBUTES_CACHE.exists():
             try:
                 with open(ATTRIBUTES_CACHE, "r", encoding="utf-8") as f:
                     all_attributes = json.load(f)
-                print(
-                    f"[AttributeExtractor] Loaded {len(all_attributes)} cached attributes."
-                )
-            except (json.JSONDecodeError, IOError) as exc:
-                print(f"[AttributeExtractor] Warning: could not load cache – {exc}")
+                print(f"[AttributeExtractor] Loaded {len(all_attributes)} cached attributes.")
+            except (json.JSONDecodeError, IOError):
+                pass
 
         # Determine pending items --------------------------------------------
         pending = {k: v for k, v in captions.items() if k not in all_attributes}
-        print(
-            f"[AttributeExtractor] {len(captions)} captions total, "
-            f"{len(all_attributes)} cached, {len(pending)} to process."
-        )
+        print(f"[AttributeExtractor] {len(captions)} captions total, {len(all_attributes)} cached, {len(pending)} to process.")
 
         if not pending:
             return all_attributes
 
-        # Rate-limit interval (seconds between requests)
-        interval = 60.0 / API_REQUESTS_PER_MINUTE
+        for filename, caption in tqdm(pending.items(), desc="Extracting attributes (Offline)", unit="img"):
+            all_attributes[filename] = self.extract_attributes(caption)
 
-        for filename, caption in tqdm(
-            pending.items(), desc="Extracting attributes", unit="img"
-        ):
-            start_time = time.time()
+        # Save all at once since it's instant
+        try:
+            with open(ATTRIBUTES_CACHE, "w", encoding="utf-8") as f:
+                json.dump(all_attributes, f, indent=2, ensure_ascii=False)
+        except IOError as exc:
+            print(f"[AttributeExtractor] Warning: could not save cache – {exc}")
 
-            attributes = self.extract_attributes(caption)
-            all_attributes[filename] = attributes
-
-            # Incremental save
-            try:
-                with open(ATTRIBUTES_CACHE, "w", encoding="utf-8") as f:
-                    json.dump(all_attributes, f, indent=2, ensure_ascii=False)
-            except IOError as exc:
-                print(f"[AttributeExtractor] Warning: could not save cache – {exc}")
-
-            # Respect rate limit
-            elapsed = time.time() - start_time
-            if elapsed < interval:
-                time.sleep(interval - elapsed)
-
-        print(
-            f"[AttributeExtractor] Extraction complete – "
-            f"{len(all_attributes)} total attribute sets."
-        )
+        print(f"[AttributeExtractor] Extraction complete – {len(all_attributes)} total attribute sets.")
         return all_attributes
