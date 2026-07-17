@@ -38,13 +38,13 @@ FALLBACK_DATASET = "ashraq/fashion-product-images-small"
 # OPENROUTER API (LLM + VLM)
 # ============================================================================
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 # Model for text-only attribute extraction (free tier)
-LLM_MODEL = "meta-llama/llama-3.2-3b-instruct:free"
+LLM_MODEL = "gemini-1.5-flash"
 
 # Model for VLM-as-Judge with vision (free tier, supports images)
-VLM_MODEL = "meta-llama/llama-3.2-11b-vision-instruct:free"
+VLM_MODEL = "gemini-1.5-flash"
 
 # API rate limiting
 API_REQUESTS_PER_MINUTE = 15
