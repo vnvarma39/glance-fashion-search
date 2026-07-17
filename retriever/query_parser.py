@@ -27,20 +27,40 @@ from config import (
 
 class QueryParser:
     """Parses natural-language fashion queries into structured attribute dicts.
-
-    Uses the OpenRouter Chat Completions API (LLM_MODEL) with a
-    system-level prompt that instructs the model to return **only** valid JSON
-    with keys ``garments``, ``colors``, ``environment``, and ``style``.
+    
+    This completely bypasses API rate limits and runs instantly offline
+    using keyword matching, perfectly mirroring the indexer's offline metadata.
     """
 
     def __init__(self) -> None:
-        """Initialise the OpenAI client pointed at OpenRouter."""
-        self.client = OpenAI(
-            api_key=OPENROUTER_API_KEY,
-            base_url=OPENROUTER_BASE_URL,
-        )
-        self.model = LLM_MODEL
-        print(f"[QueryParser] Initialised with model: {self.model}")
+        """Initialize the keyword vocabularies."""
+        print("[QueryParser] Initialised with Offline Keyword Matcher (No API limits!).")
+        
+        self.garment_vocab = [
+            "shirt", "t-shirt", "pants", "jeans", "dress", "skirt", "jacket", 
+            "coat", "sweater", "hoodie", "suit", "blazer", "shorts", "tie", 
+            "hat", "shoes", "sneakers", "boots", "glasses", "sunglasses", "bag",
+            "raincoat", "blouse"
+        ]
+        
+        self.color_vocab = [
+            "red", "blue", "green", "yellow", "black", "white", "gray", "grey", 
+            "brown", "orange", "pink", "purple", "beige", "navy", "maroon"
+        ]
+        
+        self.env_vocab = {
+            "indoor": ["indoor", "room", "inside", "office", "home", "building", "studio", "runway"],
+            "outdoor": ["outdoor", "outside", "nature", "park", "street", "city", "urban", "road"],
+            "urban": ["urban", "city", "street", "building"],
+            "nature": ["nature", "park", "tree", "grass", "forest"]
+        }
+        
+        self.style_vocab = {
+            "formal": ["formal", "suit", "tie", "blazer", "business", "office", "professional"],
+            "casual": ["casual", "t-shirt", "jeans", "hoodie", "sneakers", "relaxed", "weekend"],
+            "winter": ["winter", "coat", "jacket", "snow", "cold", "sweater"],
+            "summer": ["summer", "shorts", "sunglasses", "beach", "warm"]
+        }
 
     # ------------------------------------------------------------------
     # Public API
@@ -55,75 +75,45 @@ class QueryParser:
             The raw user search query (e.g. "red blazer with blue jeans in
             a street setting").
         max_retries : int, optional
-            Number of retry attempts on transient / parse errors (default 3).
+            Ignored in offline mode.
 
         Returns
         -------
         dict
-            A dictionary with the following keys:
-
-            * ``garments`` – list[str] of "color garment-type" descriptors
-            * ``colors`` – list[str] of colours mentioned
-            * ``environment`` – str | None  (e.g. "street", "office")
-            * ``style`` – str | None  (e.g. "formal", "casual")
+            A dictionary with the keys garments, colors, environment, style.
         """
-        prompt = QUERY_PARSING_PROMPT.format(query=query)
-
-        for attempt in range(1, max_retries + 1):
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "You are a helpful fashion search assistant. "
-                                       "Always respond with valid JSON only.",
-                        },
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.1,
-                )
-
-                raw_text = response.choices[0].message.content.strip()
-
-                # The model sometimes wraps the JSON in markdown fences —
-                # strip them if present.
-                if raw_text.startswith("```"):
-                    raw_text = raw_text.split("\n", 1)[-1]  # drop ```json line
-                    raw_text = raw_text.rsplit("```", 1)[0]  # drop closing ```
-                    raw_text = raw_text.strip()
-
-                parsed: dict = json.loads(raw_text)
-
-                # Normalise / guarantee keys
-                result = {
-                    "garments": parsed.get("garments", []),
-                    "colors": parsed.get("colors", []),
-                    "environment": parsed.get("environment"),
-                    "style": parsed.get("style"),
-                }
-                print(f"[QueryParser] Parsed query → {result}")
-                return result
-
-            except json.JSONDecodeError as exc:
-                print(
-                    f"[QueryParser] JSON parse error on attempt {attempt}/{max_retries}: {exc}"
-                )
-            except Exception as exc:  # noqa: BLE001
-                print(
-                    f"[QueryParser] API error on attempt {attempt}/{max_retries}: {exc}"
-                )
-
-            if attempt < max_retries:
-                print(f"[QueryParser] Retrying in {API_RETRY_DELAY}s …")
-                time.sleep(API_RETRY_DELAY)
-
-        # Fallback: return a best-effort dict with the raw query as a
-        # single garment entry so downstream stages can still function.
-        print("[QueryParser] All retries exhausted — returning fallback parse.")
-        return {
-            "garments": [query],
-            "colors": [],
-            "environment": None,
-            "style": None,
+        words = query.lower().replace(",", "").replace(".", "").split()
+        
+        # Extract garments (keep context if color is nearby, but simpler here: just keywords)
+        garments = list(set([word for word in words if word in self.garment_vocab]))
+        
+        # If no specific garments found, use the whole query to allow vector search to do the heavy lifting
+        if not garments:
+            garments = [query]
+            
+        # Extract colors
+        colors = list(set([word for word in words if word in self.color_vocab]))
+        
+        # Determine environment
+        environment = None
+        for env, keywords in self.env_vocab.items():
+            if any(k in words for k in keywords):
+                environment = env
+                break
+                
+        # Determine style
+        style = None
+        for s, keywords in self.style_vocab.items():
+            if any(k in words for k in keywords):
+                style = s
+                break
+                
+        result = {
+            "garments": garments,
+            "colors": colors,
+            "environment": environment,
+            "style": style,
         }
+        
+        print(f"[QueryParser] Parsed query (Offline) → {result}")
+        return result
